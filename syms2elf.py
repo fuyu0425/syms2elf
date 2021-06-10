@@ -9,7 +9,7 @@
 #
 #  ELF parser - based on the lib of ROPgadget tool by Jonathan Salwan
 #  http://shell-storm.org/project/ROPgadget/
-# 
+#
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software  Foundation, either  version 3 of  the License, or
@@ -20,6 +20,7 @@ PLUG_NAME    = "syms2elf"
 
 import os
 import sys
+import stat
 
 from ctypes import *
 from struct import unpack
@@ -103,7 +104,7 @@ class Elf32_Ehdr_LSB(LittleEndianStructure):
                     ("e_shnum",         c_ushort),
                     ("e_shstrndx",      c_ushort)
                 ]
- 
+
 class Elf64_Ehdr_LSB(LittleEndianStructure):
     _fields_ =  [
                     ("e_ident",         c_ubyte * 16),
@@ -191,7 +192,7 @@ class Elf32_Ehdr_MSB(BigEndianStructure):
                     ("e_shnum",         c_ushort),
                     ("e_shstrndx",      c_ushort)
                 ]
- 
+
 class Elf64_Ehdr_MSB(BigEndianStructure):
     _fields_ =  [
                     ("e_ident",         c_ubyte * 16),
@@ -313,7 +314,7 @@ class ELF:
         self.syms_l    = []
         self.e_ident   = self.binary[:15]
         self.ei_data   = unpack("<B", self.e_ident[ELFFlags.EI_DATA:ELFFlags.EI_DATA+1])[0] # LSB/MSB
-        
+
         self.__setHeaderElf()
         self.__setShdr()
         self.__setPhdr()
@@ -325,7 +326,7 @@ class ELF:
             return True
         return False
 
-    def strip_symbols(self):        
+    def strip_symbols(self):
         sh2delete = 2
         size2dec  = 0
         end_shdr  = self.ElfHeader.e_shoff + (self.sizeof_sh() * self.ElfHeader.e_shnum)
@@ -349,10 +350,10 @@ class ELF:
 
         e_shnum = self.ElfHeader.e_shnum
         e_shoff = self.ElfHeader.e_shoff
-        sz_striped = (e_shoff + (e_shnum * self.sizeof_sh()))        
+        sz_striped = (e_shoff + (e_shnum * self.sizeof_sh()))
 
         if strtab.sh_offset > symtab.sh_offset:
-            self.cut_at_offset(strtab.sh_offset, strtab.sh_size)  
+            self.cut_at_offset(strtab.sh_offset, strtab.sh_size)
             self.cut_at_offset(symtab.sh_offset, symtab.sh_size)
         else:
             self.cut_at_offset(symtab.sh_offset, symtab.sh_size)
@@ -381,9 +382,9 @@ class ELF:
         return None
 
     def getArchMode(self):
-        if self.ElfHeader.e_ident[ELFFlags.EI_CLASS] == ELFFlags.ELFCLASS32: 
+        if self.ElfHeader.e_ident[ELFFlags.EI_CLASS] == ELFFlags.ELFCLASS32:
             return 32
-        elif self.ElfHeader.e_ident[ELFFlags.EI_CLASS] == ELFFlags.ELFCLASS64: 
+        elif self.ElfHeader.e_ident[ELFFlags.EI_CLASS] == ELFFlags.ELFCLASS64:
             return 64
         else:
             log("[Error] ELF.getArchMode() - Bad Arch size")
@@ -404,10 +405,10 @@ class ELF:
             log("[Error] ELF.__setHeaderElf() - Bad architecture endian")
             return None
 
-        if ei_class == ELFFlags.ELFCLASS32: 
+        if ei_class == ELFFlags.ELFCLASS32:
             if   ei_data == ELFFlags.ELFDATA2LSB: self.ElfHeader = Elf32_Ehdr_LSB.from_buffer_copy(self.binary)
             elif ei_data == ELFFlags.ELFDATA2MSB: self.ElfHeader = Elf32_Ehdr_MSB.from_buffer_copy(self.binary)
-        elif ei_class == ELFFlags.ELFCLASS64: 
+        elif ei_class == ELFFlags.ELFCLASS64:
             if   ei_data == ELFFlags.ELFDATA2LSB: self.ElfHeader = Elf64_Ehdr_LSB.from_buffer_copy(self.binary)
             elif ei_data == ELFFlags.ELFDATA2MSB: self.ElfHeader = Elf64_Ehdr_MSB.from_buffer_copy(self.binary)
 
@@ -416,7 +417,7 @@ class ELF:
         off = self.ElfHeader.e_shoff
         for sh in self.shdr_l:
             self.write(off, sh)
-            off += off + sizeof(sh) 
+            off += off + sizeof(sh)
 
     """ Parse Section header """
     def __setShdr(self):
@@ -568,7 +569,7 @@ class Symbol:
         self.shndx  = shndx
 
     def __str__(self):
-        return "%s;%s;%s;%s;%s" % (self.name, self.value, self.size, 
+        return "%s;%s;%s;%s;%s" % (self.name, self.value, self.size,
             self.info, self.shname)
 
 def log(msg=''):
@@ -579,7 +580,7 @@ def log_r2(msg=''):
 
 
 def write_symbols(input_file, output_file, symbols):
-    try:        
+    try:
         with open(input_file, 'rb') as f:
             bin = ELF(f.read())
 
@@ -649,11 +650,11 @@ def write_symbols(input_file, output_file, symbols):
             "size"  : 0,
             "info"  : SymFlags.STB_LOCAL,
             "other" : 0,
-            "shndx" : 0 
+            "shndx" : 0
         }
         bin.append_symbol(sym)
 
-        # add symbols  
+        # add symbols
         for s in symbols:
 
             sh_idx = bin.get_section_id(s.shname)
@@ -678,25 +679,25 @@ def write_symbols(input_file, output_file, symbols):
 
         log("ELF saved to: %s" % output_file)
         bin.save(output_file)
+        os.chmod(output_file,stat.S_IREAD | stat.S_IWRITE |stat.S_IEXEC)
 
     except:
         log(traceback.format_exc())
 
 def ida_fcn_filter(func_ea):
-    if SegName(func_ea) not in ("extern", ".plt"):
+    if get_segm_name(func_ea) not in ("extern", ".plt"):
         return True
-    return False 
+    return False
 
 def get_ida_symbols():
     symbols = []
 
     for f in filter(ida_fcn_filter, Functions()):
         func     = get_func(f)
-        seg_name = SegName(f)
-
-        fn_name = GetFunctionName(f)
-        symbols.append(Symbol(fn_name, STB_GLOBAL_FUNC, 
-            int(func.startEA), int(func.size()), seg_name))
+        seg_name = get_segm_name(f)
+        fn_name = idaapi.get_func_name(f)
+        symbols.append(Symbol(fn_name, STB_GLOBAL_FUNC,
+            int(func.start_ea), int(func.size()), seg_name))
 
     return symbols
 
@@ -723,7 +724,7 @@ def get_r2_symbols():
             if fnc_name.startswith("go."):
                 fnc_name = fnc_name[3:]
 
-        symbols.append(Symbol(fnc_name, STB_GLOBAL_FUNC, 
+        symbols.append(Symbol(fnc_name, STB_GLOBAL_FUNC,
             fnc['offset'], int(fnc['size']), sh_name))
 
     return symbols
@@ -731,20 +732,23 @@ def get_r2_symbols():
 if USE_IDA:
 
     from idc import *
-    from idaapi import *
+    import idaapi
     from idautils import *
+    import ida_nalt
 
     class Syms2Elf(Form):
+
         def __init__(self):
+            self.input_elf = ida_nalt.get_input_file_path()
+            print(self.input_elf)
+            self.saved_name = self.input_elf +'_unstripped'
             Form.__init__(self, r"""syms2elf
         {formChangeCb}
         <#Output file#Output ~f~ile:{txtFile}>
         """, {
             'formChangeCb' : Form.FormChangeCb(self.OnFormChange),
-            'txtFile' : Form.FileInput(save=True, swidth=50)
+            'txtFile' : Form.FileInput(save=True, swidth=50, value=self.saved_name)
         })
-
-            self.input_elf = GetInputFilePath()
 
         def OnFormChange(self, fid):
             if fid == self.txtFile.id:
@@ -755,7 +759,7 @@ if USE_IDA:
                         "The output file already exists. " \
                         "Do you want to overwrite it?"
 
-                    if bool(AskUsingForm(s, "1")):
+                    if bool(idaapi.ask_form(s, "1")):
                         os.remove(o_file)
                     else:
                         self.SetControlValue(self.txtFile, '')
@@ -810,9 +814,7 @@ elif USE_R2:
     file_info = r2p.cmdj("ij").get("core")
 
     if file_info['format'].lower() in ('elf','elf64'):
-        symbols = get_r2_symbols()  
+        symbols = get_r2_symbols()
         write_symbols(file_info['file'], sys.argv[1], symbols)
     else:
         log("The input file is not a ELF")
-
-
